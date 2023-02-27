@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "mysql2": "^3.1.2"
+  },
+  "devDependencies": {
+    "stylelint": "^13.0.0"
+  }
+}
