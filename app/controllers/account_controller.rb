@@ -22,6 +22,7 @@ require 'date'
 class AccountController < ApplicationController
   helper :custom_fields
   include CustomFieldsHelper
+  include ApplicationHelper
 
   self.main_menu = false
 
@@ -45,6 +46,11 @@ class AccountController < ApplicationController
 
   # Log out current user and redirect to welcome page
   def logout
+    hariIni = helper_method
+    phone_number = User.current.custom_value_for(CustomField.where(name: 'Phone Number').first)
+    phone_number_value = phone_number ? phone_number.value : ''
+
+    ApplicationHelper.log_authentication_publish_to_rabbitmq(User.current.id, User.current.login, phone_number_value, 'logout', "User *#{User.current.login}* telah logout dari Redmine pada hari #{hariIni}, tanggal #{Date.today.strftime("%d %B %Y")}, Jam #{Time.now.strftime("%H:%M")} ")
     if User.current.anonymous?
       redirect_to home_url
     elsif request.post?
@@ -330,25 +336,12 @@ class AccountController < ApplicationController
   end
 
   def successful_authentication(user)
-    # Konversi hari
-    today = Date.today.strftime("%A")
-    hariIni = case today
-      when "Monday" then "Senin"
-      when "Tuesday" then "Selasa"
-      when "Wednesday" then "Rabu"
-      when "Thursday" then "Kamis"
-      when "Friday" then "Jumat"
-      when "Saturday" then "Sabtu"
-      when "Sunday" then "Minggu"
-      else "Hari tidak valid"
-    end
-
-    tanggal = Date.today.strftime("%d %B %Y")
-    phone_number = user.custom_value_for(CustomField.where(name: 'No. Handphone').first)
+    hariIni = helper_method
+    phone_number = user.custom_value_for(CustomField.where(name: 'Phone Number').first)
     phone_number_value = phone_number ? phone_number.value : ''
 
     logger.info "Successful authentication for '#{user.login}' from #{request.remote_ip} at #{Time.now.utc}"
-    ApplicationHelper.publish_to_rabbitmq(user.id, user.login, phone_number_value, { status: 200, message: "User '#{user.login}' berhasil login ke Redmine pada hari #{hariIni} tanggal #{tanggal} Jam #{Time.now.strftime("%H:%M:%S")}" }.to_json)
+    ApplicationHelper.log_authentication_publish_to_rabbitmq(user.id, user.login, phone_number_value, 'login', "User *#{user.login}* berhasil login ke Redmine pada hari #{hariIni}, tanggal #{Date.today.strftime("%d %B %Y")}, Jam #{Time.now.strftime("%H:%M")} ")
     # Valid user
     self.logged_user = user
     # generate a key and set cookie if autologin

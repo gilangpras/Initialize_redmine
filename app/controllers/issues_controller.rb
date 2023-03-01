@@ -17,6 +17,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+require 'date'
+
 class IssuesController < ApplicationController
   default_search_scope :issues
 
@@ -41,6 +43,7 @@ class IssuesController < ApplicationController
   include QueriesHelper
   helper :repositories
   helper :timelog
+  include ApplicationHelper
 
   def index
     use_session = !request.format.csv?
@@ -149,6 +152,47 @@ class IssuesController < ApplicationController
     @issue.save_attachments(params[:attachments] || (params[:issue] && params[:issue][:uploads]))
     if @issue.save
       call_hook(:controller_issues_new_after_save, {:params => params, :issue => @issue})
+      
+      # Get issue data
+      issue_name = @issue.subject
+      issue_id = @issue.id
+      project_name = @issue.project.name
+      created_by = @issue.author.name
+      if @issue.due_date
+        deadline = @issue.due_date.strftime('%d-%m-%y %H:%M')
+      else
+        deadline = 'Tanggal Deadline belum diinputkan'
+      end
+      url = issue_url(@issue)
+
+      hariIni = helper_method
+
+      # Get assigned member data
+      if @issue.assigned_to
+        assigned_to = @issue.assigned_to.name
+        assigned_to_phone_number = @issue.assigned_to.custom_value_for(CustomField.where(name: 'Phone Number').first)
+        assigned_to_phone_number_value = assigned_to_phone_number ? assigned_to_phone_number.value : ''
+      else
+        assigned_to = 'Anonymous'
+        assigned_to_phone_number_value = nil
+      end
+      
+      # Get Watchers data
+      watchers = @issue.watchers
+      if watchers.present?
+        watchers.each do |watcher|
+          watcher_name = watcher.user.name
+          watcher_phone_number = watcher.user.custom_value_for(CustomField.where(name: 'Phone Number').first)
+          watcher_phone_number_value = watcher_phone_number ? watcher_phone_number.value : ''
+
+          puts "watchers pada issues #{issue_name} adalah #{watcher_name} dengan nomor telephone #{watcher_phone_number_value}"
+
+          ApplicationHelper.log_watchers_issues_publish_to_rabbitmq(issue_id, issue_name, watcher_name, watcher_phone_number_value, "*#{watcher_name}* ditambahkan oleh *#{created_by}* sebagai watcher pada issue #{issue_name} dalam project #{project_name} yang di assignedkan ke *#{assigned_to}* pada hari #{hariIni}, tanggal #{Date.today.strftime("%d %B %Y")}, Jam #{Time.now.strftime("%H:%M")}")
+        end
+      end
+
+      ApplicationHelper.log_issues_publish_to_rabbitmq(issue_id, issue_name, assigned_to, assigned_to_phone_number_value, "*#{assigned_to}* mendapatkan issue assignment: #{issue_name} dari *#{created_by}* pada project #{project_name} pada hari #{hariIni}, tanggal #{Date.today.strftime("%d %B %Y")}, Jam #{Time.now.strftime("%H:%M")} dengan deadline issue pada tanggal #{deadline}, Akses detail issue di: #{url}")
+      
       respond_to do |format|
         format.html do
           render_attachment_warning_if_needed(@issue)

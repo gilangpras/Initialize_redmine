@@ -33,8 +33,23 @@ module ApplicationHelper
   extend Forwardable
   def_delegators :wiki_helper, :wikitoolbar_for, :heads_for_wiki_formatter
 
-  #Publish ke RMQ
-  def self.publish_to_rabbitmq(userId, username, phoneNumber, payload)
+  # variable to controller
+  def helper_method
+    today = Date.today.strftime("%A")
+    hariIni = case today
+      when "Monday" then "Senin"
+      when "Tuesday" then "Selasa"
+      when "Wednesday" then "Rabu"
+      when "Thursday" then "Kamis"
+      when "Friday" then "Jum'at"
+      when "Saturday" then "Sabtu"
+      when "Sunday" then "Minggu"
+      else "Hari tidak valid" 
+    end
+  end
+
+  # publish into rmq
+  def self.log_authentication_publish_to_rabbitmq(userId, username, phoneNumber = nil, status, message)
     connection = Bunny.new(
       host: 'rmq2.pptik.id',
       vhost: '/redmine-dev',
@@ -46,20 +61,118 @@ module ApplicationHelper
     begin
       connection.start
       channel = connection.create_channel
-      queue = channel.queue('logs-login', durable: true)
+      queue = channel.queue('logs-authentication', durable: true)
 
       data = {
         userId: userId,
         username: username,
         phoneNumber: phoneNumber,
-        payload: payload,
-        timestamp: Time.now
+        status: status,
+        message: message,
+        timestamp: Time.now.utc
       }.to_json
 
       channel.default_exchange.publish(data, routing_key: queue.name)
-      puts "Data sudah masuk ke RabbitMQ"
+      logger.info "Publish to RMQ = "+data
     rescue => e
-      puts "Data Gagal Dimasukan #{e.message}"
+      puts "Unable to publish data to RabbitMQ. Error message: #{e.message}"
+    ensure
+      connection.close if connection.open?
+    end
+  end
+
+  def self.log_project_publish_to_rabbitmq(projectId, projectName, username, phoneNumber = nil, status, message)
+    connection = Bunny.new(
+      host: 'rmq2.pptik.id',
+      vhost: '/redmine-dev',
+      port: 5672,
+      username: 'redmine-dev',
+      password: 'Er3d|01m!n3'
+    )
+
+    begin
+      connection.start
+      channel = connection.create_channel
+      queue = channel.queue('logs-project', durable: true)
+
+      data = {
+        projectId: projectId,
+        projectName: projectName,
+        username: username,
+        phoneNumber: phoneNumber,
+        status: status,
+        message: message,
+        timestamp: Time.now.utc
+      }.to_json
+
+      channel.default_exchange.publish(data, routing_key: queue.name)
+      puts "Berhasil Publish ke RabbitMQ"
+    rescue => e
+      puts "Unable to publish data to RabbitMQ. Error message: #{e.message}"
+    ensure
+      connection.close if connection.open?
+    end
+  end
+
+  def self.log_issues_publish_to_rabbitmq(issuesId, issuesName, username, phoneNumber, message)
+    connection = Bunny.new(
+      host: 'rmq2.pptik.id',
+      vhost: '/redmine-dev',
+      port: 5672,
+      username: 'redmine-dev',
+      password: 'Er3d|01m!n3'
+    )
+
+    begin
+      connection.start
+      channel = connection.create_channel
+      queue = channel.queue('logs-issues', durable: true)
+
+      data = {
+        issuesId: issuesId,
+        issuesName: issuesName,
+        username: username,
+        phoneNumber: phoneNumber,
+        message: message,
+        timestamp: Time.now.utc
+      }.to_json
+
+      channel.default_exchange.publish(data, routing_key: queue.name)
+      puts "Berhasil Publish ke RabbitMQ"
+    rescue => e
+      puts "Unable to publish data to RabbitMQ. Error message: #{e.message}"
+    ensure
+      connection.close if connection.open?
+    end
+  end
+
+  def self.log_watchers_issues_publish_to_rabbitmq(issuesId, issuesName, watcherName, watcherPhoneNumber = nil, message)
+    connection = Bunny.new(
+      host: 'rmq2.pptik.id',
+      vhost: '/redmine-dev',
+      port: 5672,
+      username: 'redmine-dev',
+      password: 'Er3d|01m!n3'
+    )
+
+    begin
+      connection.start
+      channel = connection.create_channel
+      queue = channel.queue('logs-issues-watcher', durable: true)
+
+      data = {
+        issuesId: issuesId,
+        issuesName: issuesName,
+        watcherName: watcherName,
+        watcherPhoneNumber: watcherPhoneNumber,
+        message: message,
+        timestamp: Time.now.utc
+      }.to_json
+
+      channel.default_exchange.publish(data, routing_key: queue.name)
+      puts "Berhasil Publish ke RabbitMQ"
+    rescue => e
+      puts "Unable to publish data to RabbitMQ. Error message: #{e.message}"
     ensure
       connection.close if connection.open?
     end
